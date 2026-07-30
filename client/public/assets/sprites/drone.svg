@@ -1,0 +1,16 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 60 40" width="60" height="40">
+  <g fill="#ffffff" stroke="#0b0c10" stroke-width="3" stroke-linejoin="round" stroke-linecap="round">
+    <!-- arms -->
+    <line x1="20" y1="16" x2="6" y2="6" />
+    <line x1="40" y1="16" x2="54" y2="6" />
+    <line x1="20" y1="24" x2="6" y2="34" />
+    <line x1="40" y1="24" x2="54" y2="34" />
+    <!-- rotors -->
+    <circle cx="6" cy="6" r="5" />
+    <circle cx="54" cy="6" r="5" />
+    <circle cx="6" cy="34" r="5" />
+    <circle cx="54" cy="34" r="5" />
+    <!-- central body -->
+    <rect x="19" y="13" width="22" height="14" rx="4" />
+  </g>
+</svg>

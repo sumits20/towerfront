@@ -1,0 +1,11 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 40 54" width="40" height="54">
+  <g fill="#ffffff" stroke="#0b0c10" stroke-width="3" stroke-linejoin="round" stroke-linecap="round">
+    <!-- mid-stride legs -->
+    <rect x="18" y="34" width="7" height="18" rx="2" />
+    <rect x="6" y="32" width="7" height="16" rx="2" />
+    <!-- slim torso -->
+    <rect x="9" y="14" width="20" height="20" rx="6" />
+    <!-- small head -->
+    <circle cx="19" cy="7" r="7" />
+  </g>
+</svg>
