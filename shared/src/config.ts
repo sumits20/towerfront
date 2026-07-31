@@ -13,6 +13,11 @@ export const TOWER_MAX_HEALTH = 1000;
 
 export const STARTING_MONEY = 500;
 
+// Menu display name (no auth) — shared so the menu's client-side validation
+// and the server's defensive re-sanitization (never trust the client's
+// join options as-is) can't drift apart.
+export const MAX_PLAYER_NAME_LENGTH = 20;
+
 // Rifle projectiles arc under gravity rather than travelling in a flat line
 // (build plan 5.1's "visible projectile travel" note). Kept modest so
 // close-range shots stay easy to land.
@@ -35,7 +40,7 @@ export const PASSIVE_INCOME_AMOUNT = 10;
 export const PASSIVE_INCOME_INTERVAL_MS = 5000;
 
 export const GOODIE_MIN_INTERVAL_MS = 60_000;
-export const GOODIE_MAX_INTERVAL_MS = 300_000;
+export const GOODIE_MAX_INTERVAL_MS = 180_000;
 export const GOODIE_SPAWN_MARGIN = 60;
 export const GOODIE_START_Y = -20;
 export const GOODIE_GOLD_AMOUNT = 100;

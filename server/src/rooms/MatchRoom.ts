@@ -32,6 +32,7 @@ import {
   AI_AIM_SPREAD_RAD,
   AI_INITIAL_DELAY_MIN_MS,
   AI_INITIAL_DELAY_MAX_MS,
+  MAX_PLAYER_NAME_LENGTH,
   type Side,
   type UnitType,
   type PurchasableUnitType,
@@ -54,6 +55,13 @@ function randomBetween(min: number, max: number): number {
 
 function isPurchasable(unitType: UnitType): unitType is PurchasableUnitType {
   return (PURCHASABLE_UNIT_TYPES as readonly UnitType[]).includes(unitType);
+}
+
+/** Never trust the client's join options as-is, even for a display-only field — re-trim/cap/type-check server-side. */
+function sanitizeDisplayName(raw: unknown, fallback: string): string {
+  if (typeof raw !== "string") return fallback;
+  const trimmed = raw.trim().slice(0, MAX_PLAYER_NAME_LENGTH);
+  return trimmed || fallback;
 }
 
 /**
@@ -125,14 +133,16 @@ export class MatchRoom extends Room<MatchState> {
     this.setSimulationInterval((deltaMs) => this.tick(deltaMs), SIMULATION_TICK_MS);
   }
 
-  override onJoin(client: Client): void {
+  override onJoin(client: Client, options?: { name?: unknown }): void {
     const side = SIDES.find((candidate) => !this.state.players.get(candidate)!.connected);
     if (!side) {
       // maxClients already guards this, but never silently misassign a side.
       throw new Error("MatchRoom is full");
     }
     this.sessionSides.set(client.sessionId, side);
-    this.state.players.get(side)!.connected = true;
+    const player = this.state.players.get(side)!;
+    player.connected = true;
+    player.displayName = sanitizeDisplayName(options?.name, side === "left" ? "Player 1" : "Player 2");
     client.send(SERVER_MESSAGE.assignedSide, side);
   }
 
@@ -179,6 +189,7 @@ export class MatchRoom extends Room<MatchState> {
       player.gunnerAmmo = WEAPON_DEFINITIONS.rifle.magazineSize;
       const previous = this.state?.players.get(side);
       player.connected = previous?.connected ?? false;
+      player.displayName = sanitizeDisplayName(previous?.displayName, side === "left" ? "Player 1" : "Player 2");
       state.players.set(side, player);
     }
 

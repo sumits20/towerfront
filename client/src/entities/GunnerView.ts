@@ -65,7 +65,15 @@ export class GunnerView {
     const facingLeft = Math.cos(angle) < 0;
     if (facingLeft) {
       this.sprite.setFlipX(true);
-      this.sprite.rotation = Phaser.Math.Angle.Wrap(Math.PI - angle);
+      // Phaser applies scale (the flip) before rotation, so a flipped
+      // sprite's local +X axis points at world -X: rotating by `angle`
+      // directly would then aim at the *mirror* of the intended direction
+      // (confirmed empirically — aiming up-behind rendered the barrel
+      // pointing down-behind, and vice versa). `angle + PI` cancels that
+      // out: for a target direction (cos a, sin a), the rendered direction
+      // is (-cos r, -sin r), which only equals (cos a, sin a) when
+      // r = a + PI, not PI - a.
+      this.sprite.rotation = Phaser.Math.Angle.Wrap(angle + Math.PI);
     } else {
       this.sprite.setFlipX(false);
       this.sprite.rotation = angle;

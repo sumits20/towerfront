@@ -10,6 +10,7 @@ import {
   STARTING_MONEY,
   PROJECTILE_GRAVITY_Y,
   EasyAiController,
+  MAX_PLAYER_NAME_LENGTH,
 } from "@towerfront/shared";
 import { Tower } from "../entities/Tower";
 import { Gunner } from "../entities/Gunner";
@@ -44,8 +45,9 @@ const GOODIE_START_Y = -20;
 const GOODIE_GOLD_AMOUNT = 100;
 const GOODIE_REPAIR_AMOUNT = 150;
 
-interface StartData {
+export interface StartData {
   readonly autoStart?: boolean;
+  readonly playerName?: string;
 }
 
 /**
@@ -87,6 +89,7 @@ export class CombatSandboxScene extends Phaser.Scene {
   private started = false;
   private matchOver = false;
   private autoStart = false;
+  private playerName = "Player";
   private startOverlayObjects: Phaser.GameObjects.GameObject[] = [];
   private startButton?: PurchaseButton;
 
@@ -96,6 +99,7 @@ export class CombatSandboxScene extends Phaser.Scene {
 
   init(data: StartData): void {
     this.autoStart = data?.autoStart ?? false;
+    this.playerName = data?.playerName?.trim().slice(0, MAX_PLAYER_NAME_LENGTH) || "Player";
   }
 
   preload(): void {
@@ -602,7 +606,9 @@ export class CombatSandboxScene extends Phaser.Scene {
       width: 180,
       height: 56,
       title: "Restart",
-      onClick: this.withClickSound(() => this.scene.restart({ autoStart: true } satisfies StartData)),
+      onClick: this.withClickSound(() =>
+        this.scene.restart({ autoStart: true, playerName: this.playerName } satisfies StartData),
+      ),
     });
     restartButton.setStatus("Play again", true);
   }
@@ -623,7 +629,7 @@ export class CombatSandboxScene extends Phaser.Scene {
   }
 
   private formatMoney(side: Side): string {
-    return `${side === "left" ? "P1" : "P2 (AI)"} Gold: ${this.money[side]}`;
+    return `${side === "left" ? this.playerName : "P2 (AI)"} Gold: ${this.money[side]}`;
   }
 
   private createDeathParticles(): void {

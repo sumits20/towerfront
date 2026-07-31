@@ -38,7 +38,13 @@ function wrap(client: Client, room: Room<MatchState>): MatchConnection {
 // UI update in this scene depends on those callbacks, so reflection mode is
 // the only one that actually works today — revisit if colyseus.js fixes
 // this, or if an entity genuinely needs a server-side getter.
-export async function connectToMatch(): Promise<MatchConnection> {
+/**
+ * `name` is only used for a fresh join — a reconnect (stored token or
+ * `reconnectToMatch` below) resumes the same session, which already has a
+ * `displayName` set server-side from the original join, so there's nothing
+ * to resend.
+ */
+export async function connectToMatch(name: string): Promise<MatchConnection> {
   const client = new Client(SERVER_URL);
   const storedToken = sessionStorage.getItem(RECONNECTION_TOKEN_KEY);
 
@@ -51,7 +57,7 @@ export async function connectToMatch(): Promise<MatchConnection> {
     }
   }
 
-  return wrap(client, await client.joinOrCreate<MatchState>("match"));
+  return wrap(client, await client.joinOrCreate<MatchState>("match", { name }));
 }
 
 /** Attempts to resume the same session after an unexpected drop (network blip, not a deliberate leave). Throws if the grace window has expired. */

@@ -15,8 +15,25 @@ import type { TowerfrontDebugState } from "../src/net/testHooks";
 // handling — treat any failure here as a blocker, not a footnote, before
 // calling networking work "verified".
 
-async function gotoMatch(page: Page): Promise<void> {
+// Matches BATTLEFIELD_WIDTH/HEIGHT exactly, so Phaser.Scale.FIT renders the
+// canvas at 1:1 with no letterboxing — page-pixel coordinates below equal
+// game-world coordinates.
+const GAME_VIEWPORT = { width: 1600, height: 900 };
+// MainMenuScene's "Play Online" button center — kept in sync by hand with
+// its layout (BUTTON_WIDTH/BUTTON_HEIGHT/BUTTON_GAP, centered at 800,450).
+const PLAY_ONLINE_BUTTON = { x: 945, y: 486 };
+
+/** MainMenuScene is the entry point on every load (including a refresh) — route through it (name entry + "Play Online") before the networked match exists at all. */
+async function playOnlineFromMenu(page: Page, playerName: string): Promise<void> {
+  const nameInput = page.locator("input[type=text]");
+  await nameInput.waitFor({ state: "visible", timeout: 15_000 });
+  await nameInput.fill(playerName);
+  await page.mouse.click(PLAY_ONLINE_BUTTON.x, PLAY_ONLINE_BUTTON.y);
+}
+
+async function gotoMatch(page: Page, playerName: string): Promise<void> {
   await page.goto("/");
+  await playOnlineFromMenu(page, playerName);
   await page.waitForFunction(() => window.__towerfrontDebug !== undefined, undefined, { timeout: 15_000 });
 }
 
@@ -49,8 +66,8 @@ async function waitForDebug(
 
 /** Two tabs = two separate browser profiles (contexts), not two pages sharing one — matches real usage and lets a network disruption target only one side. */
 async function openTwoTabs(browser: Browser) {
-  const contextA = await browser.newContext();
-  const contextB = await browser.newContext();
+  const contextA = await browser.newContext({ viewport: GAME_VIEWPORT });
+  const contextB = await browser.newContext({ viewport: GAME_VIEWPORT });
   const pageA = await contextA.newPage();
   const pageB = await contextB.newPage();
 
@@ -59,9 +76,9 @@ async function openTwoTabs(browser: Browser) {
   pageA.on("pageerror", (err) => errorsA.push(err.message));
   pageB.on("pageerror", (err) => errorsB.push(err.message));
 
-  await gotoMatch(pageA);
+  await gotoMatch(pageA, "Alice");
   await waitForDebug(pageA, (s) => s.towersReady); // let A settle before B joins, matching real usage pacing
-  await gotoMatch(pageB);
+  await gotoMatch(pageB, "Bob");
   await waitForDebug(pageA, (s) => s.started);
   await waitForDebug(pageB, (s) => s.started);
 
@@ -152,6 +169,12 @@ test.describe("MatchRoom multiplayer", () => {
     const { contextA, contextB, pageA, errorsA } = await openTwoTabs(browser);
     try {
       await pageA.reload();
+      // A reload lands back on MainMenuScene (the entry point on every load)
+      // before NetworkMatchScene — and therefore __towerfrontDebug — exist
+      // again. sessionStorage (and so the reconnection token) survives a
+      // same-tab reload, so this still exercises the same resume-session
+      // path as before, just preceded by the menu step a real user would see.
+      await playOnlineFromMenu(pageA, "Alice");
       await pageA.waitForFunction(() => window.__towerfrontDebug !== undefined, undefined, { timeout: 15_000 });
       await waitForDebug(pageA, (s) => s.towersReady);
 

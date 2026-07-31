@@ -10,6 +10,8 @@ import { GROUND_Y, TOWER_MARGIN_X, TOWER_WIDTH, TOWER_HEIGHT, TOWER_MAX_HEALTH, 
  */
 export class PlayerState extends Schema {
   @type("string") side: Side = "left";
+  /** Player-chosen display name (menu-only, no auth) — server-sanitized, never trusted as-is from the client. */
+  @type("string") displayName = "";
   @type("number") gold = 0;
   @type("boolean") connected = false;
   @type("boolean") ready = false;

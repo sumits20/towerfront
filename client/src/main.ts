@@ -1,6 +1,8 @@
 import Phaser from "phaser";
 import "./style.css";
 import { BATTLEFIELD_WIDTH, BATTLEFIELD_HEIGHT } from "@towerfront/shared";
+import { MainMenuScene } from "./scenes/MainMenuScene";
+import { CombatSandboxScene } from "./scenes/CombatSandboxScene";
 import { NetworkMatchScene } from "./scenes/NetworkMatchScene";
 
 new Phaser.Game({
@@ -15,9 +17,15 @@ new Phaser.Game({
   scale: {
     mode: Phaser.Scale.FIT,
   },
+  // Required for MainMenuScene's this.add.dom() display-name input.
+  dom: {
+    createContainer: true,
+  },
   physics: {
     default: "arcade",
     arcade: { debug: false },
   },
-  scene: [NetworkMatchScene],
+  // The first scene in this list auto-starts; the rest are registered but
+  // dormant until MainMenuScene routes to one via scene.start().
+  scene: [MainMenuScene, CombatSandboxScene, NetworkMatchScene],
 });

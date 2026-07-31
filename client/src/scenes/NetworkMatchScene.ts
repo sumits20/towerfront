@@ -11,6 +11,7 @@ import {
   PURCHASABLE_UNIT_TYPES,
   CLIENT_MESSAGE,
   SERVER_MESSAGE,
+  MAX_PLAYER_NAME_LENGTH,
   type Side,
   type PurchasableUnitType,
   type MatchState,
@@ -46,6 +47,10 @@ const PURCHASE_KEY_CODES: Record<PurchasableUnitType, number> = {
   drone: Phaser.Input.Keyboard.KeyCodes.FOUR,
 };
 
+export interface StartData {
+  readonly playerName?: string;
+}
+
 /**
  * Server-authoritative match view. Every piece of gameplay state (health,
  * gold, unit/drone/projectile positions, cooldowns) is owned by MatchRoom;
@@ -70,6 +75,7 @@ export class NetworkMatchScene extends Phaser.Scene {
 
   private connection?: MatchConnection;
   private mySide?: Side;
+  private playerName = "Player";
   private audio!: AudioManager;
   private deathParticles!: Phaser.GameObjects.Particles.ParticleEmitter;
 
@@ -97,6 +103,10 @@ export class NetworkMatchScene extends Phaser.Scene {
 
   constructor() {
     super("NetworkMatchScene");
+  }
+
+  init(data: StartData): void {
+    this.playerName = data?.playerName?.trim().slice(0, MAX_PLAYER_NAME_LENGTH) || "Player";
   }
 
   preload(): void {
@@ -198,7 +208,8 @@ export class NetworkMatchScene extends Phaser.Scene {
         // here too would fight it with stale, round-trip-delayed angles.
         if (side !== this.mySide) gunner.setAimAngle(player.gunnerAimAngle);
       }
-      this.moneyText[side]?.setText(this.formatMoney(side, player?.gold ?? 0));
+      const fallbackName = side === "left" ? "Player 1" : "Player 2";
+      this.moneyText[side]?.setText(this.formatMoney(side, player?.gold ?? 0, player?.displayName || fallbackName));
     }
     this.refreshPurchaseButtons(state);
 
@@ -221,7 +232,7 @@ export class NetworkMatchScene extends Phaser.Scene {
   private async start(): Promise<void> {
     let connection: MatchConnection;
     try {
-      connection = await connectToMatch();
+      connection = await connectToMatch(this.playerName);
     } catch (err) {
       this.statusText?.setText("Connection failed — is the server running?");
       console.error(err);
@@ -371,6 +382,7 @@ export class NetworkMatchScene extends Phaser.Scene {
           this.deathParticles.explode(UNIT_DEATH_PARTICLE_COUNT, x, y);
           this.audio.play(AUDIO_KEYS.unitDeath);
         },
+        () => this.nearestOpposingPosition(state, droneState.side, droneState.x),
       );
       this.droneViews.set(id, view);
       this.audio.play(AUDIO_KEYS.unitSpawn);
@@ -402,6 +414,11 @@ export class NetworkMatchScene extends Phaser.Scene {
       "matchOver",
       (matchOver) => {
         if (matchOver) this.showWinBanner(state.winner as Side, connection);
+        // A stale "waiting for opponent"/"disconnected" message from before
+        // the match ended won't otherwise get re-evaluated — nothing else
+        // re-checks it once matchOver flips, and updateConnectionUi is only
+        // ever triggered by "connected"/"started" changes.
+        this.updateConnectionUi(connection);
       },
       true,
     );
@@ -443,25 +460,27 @@ export class NetworkMatchScene extends Phaser.Scene {
     this.statusText?.setText("Disconnected — please refresh to rejoin.");
   }
 
-  // Two distinct UI states that must never be conflated: before the match
-  // starts, "both connected" gates the ready handshake and deserves a
-  // full-screen message (there's no match to see behind it yet). Once
-  // `started` flips true, a dropped OPPONENT must NEVER fall back to that
-  // same full-screen text — the match keeps simulating (AI covers the empty
-  // side immediately), so the live view keeps rendering underneath and only
-  // gets a small, non-blocking notice.
+  // Three mutually exclusive UI states: before the match starts, "both
+  // connected" gates the ready handshake and deserves a full-screen message
+  // (there's no match to see behind it yet). Once `started` flips true, a
+  // dropped OPPONENT must NEVER fall back to that same full-screen text —
+  // the match keeps simulating (AI covers the empty side immediately), so
+  // the live view keeps rendering underneath and only gets a small,
+  // non-blocking notice. And once `matchOver` is true, Restart is the only
+  // relevant action regardless of connection state — both of the above are
+  // suppressed entirely so they never stack with the win banner.
   private updateConnectionUi(connection: MatchConnection): void {
     if (this.reconnecting) return; // attemptReconnect owns the text while it's running
     const bothConnected = this.leftConnected && this.rightConnected;
-    const started = connection.room.state.started;
+    const { started, matchOver } = connection.room.state;
 
-    const statusText = !started && !bothConnected ? "Waiting for opponent..." : "";
-    const statusVisible = !started && !bothConnected;
+    const statusText = !matchOver && !started && !bothConnected ? "Waiting for opponent..." : "";
+    const statusVisible = !matchOver && !started && !bothConnected;
     this.statusText?.setText(statusText);
     this.statusText?.setVisible(statusVisible);
 
-    const disconnectBannerText = started && !bothConnected ? "Opponent disconnected — AI took over" : "";
-    const disconnectBannerVisible = started && !bothConnected;
+    const disconnectBannerText = !matchOver && started && !bothConnected ? "Opponent disconnected — AI took over" : "";
+    const disconnectBannerVisible = !matchOver && started && !bothConnected;
     this.disconnectBanner?.setText(disconnectBannerText);
     this.disconnectBanner?.setVisible(disconnectBannerVisible);
 
@@ -507,7 +526,7 @@ export class NetworkMatchScene extends Phaser.Scene {
 
     for (const side of SIDES) {
       this.moneyText[side] = this.add
-        .text(startX[side], rowY - 10, this.formatMoney(side, 0), {
+        .text(startX[side], rowY - 10, this.formatMoney(side, 0, side === "left" ? "Player 1" : "Player 2"), {
           fontFamily: "monospace",
           fontSize: "15px",
           color: "#f2c14e",
@@ -570,9 +589,42 @@ export class NetworkMatchScene extends Phaser.Scene {
     }
   }
 
-  private formatMoney(side: Side, gold: number): string {
-    const label = side === this.mySide ? "You" : side === "left" ? "P1" : "P2";
+  private formatMoney(side: Side, gold: number, displayName: string): string {
+    const label = side === this.mySide ? `${displayName} (You)` : displayName;
     return `${label} Gold: ${gold}`;
+  }
+
+  /**
+   * Approximates DroneState's own server-side targeting (nearest opposing
+   * drone, else nearest opposing unit, both anywhere on the field) purely
+   * from currently-rendered positions — used only to draw the drone's
+   * client-inferred shot visual (see UnitView.fireProjectileEffect), never
+   * for anything that affects actual game state.
+   */
+  private nearestOpposingPosition(state: MatchState, side: Side, fromX: number): { x: number; y: number } | null {
+    const enemySide: Side = side === "left" ? "right" : "left";
+    let closest: { x: number; y: number } | null = null;
+    let closestDist = Infinity;
+
+    state.drones.forEach((drone) => {
+      if (drone.side !== enemySide) return;
+      const dist = Math.abs(drone.x - fromX);
+      if (dist < closestDist) {
+        closestDist = dist;
+        closest = { x: drone.x, y: drone.y };
+      }
+    });
+    if (closest) return closest;
+
+    state.units.forEach((unit) => {
+      if (unit.side !== enemySide) return;
+      const dist = Math.abs(unit.x - fromX);
+      if (dist < closestDist) {
+        closestDist = dist;
+        closest = { x: unit.x, y: unit.y };
+      }
+    });
+    return closest;
   }
 
   private showWinBanner(winner: Side, connection: MatchConnection): void {
@@ -581,7 +633,7 @@ export class NetworkMatchScene extends Phaser.Scene {
 
     const centerX = BATTLEFIELD_WIDTH / 2;
     const centerY = BATTLEFIELD_HEIGHT / 2;
-    const label = winner === "left" ? "LEFT TOWER WINS" : "RIGHT TOWER WINS";
+    const label = winner === "left" ? "BLUE WINS" : "RED WINS";
 
     const text = this.add
       .text(centerX, centerY - 40, label, {

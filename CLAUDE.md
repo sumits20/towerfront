@@ -52,7 +52,7 @@ Implemented so far:
   `handleProjectileVsUnits` would incorrectly grant rifle-only bounty for a unit-vs-unit kill).
 - `Goodie` (`client/src/entities/Goodie.ts`) sky pickups: one gold ("G", +100 gold) or repair ("R",
   `Tower.repair()`, +150 health capped at max) goodie spawns at a time, random top-of-screen X,
-  1–5 minute random interval since the last one disappeared (collected or reached the ground line
+  1–3 minute random interval since the last one disappeared (collected or reached the ground line
   unshot), constant-speed drift (no gravity — distinct from projectile physics). Effect always
   applies to whichever side's projectile hit it (`projectile`'s tagged `side`), so this already
   works for the AI symmetrically — **but the AI doesn't shoot at goodies**, it only shoots at units,

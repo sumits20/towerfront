@@ -2,18 +2,23 @@ import Phaser from "phaser";
 import type { Side } from "@towerfront/shared";
 import { HealthBar } from "./HealthBar";
 import { UNIT_VISUALS, type ImplementedUnitType } from "./unitVisuals";
+import { SPRITE_KEYS } from "../assetKeys";
 
 const HIT_FLASH_MS = 80;
 const HEALTH_BAR_GAP = 10;
 const LUNGE_DISTANCE = 10;
 const LUNGE_DURATION_MS = 90;
+const SHOT_DISPLAY_WIDTH = 20;
+const SHOT_DISPLAY_HEIGHT = 9;
+const SHOT_TRAVEL_MS = 130;
 
 /**
- * View-only ground unit — MatchRoom's `UnitState` owns all movement/combat;
- * this only renders whatever it's told via `sync()`, called every frame
- * with the current server fields. Position is only pushed to the sprite
- * when it actually changed (units stand still while attacking), so the
- * attack lunge tween isn't stomped by a same-value reassignment every frame.
+ * View-only ground unit/drone — MatchRoom's `UnitState`/`DroneState` own all
+ * movement/combat; this only renders whatever it's told via `sync()`,
+ * called every frame with the current server fields. Position is only
+ * pushed to the sprite when it actually changed (entities stand still
+ * while attacking), so the attack lunge tween isn't stomped by a
+ * same-value reassignment every frame.
  */
 export class UnitView {
   private readonly scene: Phaser.Scene;
@@ -23,6 +28,8 @@ export class UnitView {
   private readonly directionSign: 1 | -1;
   private readonly onHit?: () => void;
   private readonly onDeath?: (x: number, y: number) => void;
+  /** Drones only — ground units' attacks are melee (the lunge already shows it) and have no ranged shot to draw. */
+  private readonly getAttackTarget?: () => { x: number; y: number } | null;
 
   private lastX: number;
   private lastY: number;
@@ -38,6 +45,7 @@ export class UnitView {
     maxHealth: number,
     onHit?: () => void,
     onDeath?: (x: number, y: number) => void,
+    getAttackTarget?: () => { x: number; y: number } | null,
   ) {
     const visual = UNIT_VISUALS[unitType];
     this.scene = scene;
@@ -45,6 +53,7 @@ export class UnitView {
     this.directionSign = side === "left" ? 1 : -1;
     this.onHit = onHit;
     this.onDeath = onDeath;
+    this.getAttackTarget = getAttackTarget;
     this.lastX = x;
     this.lastY = y;
     this.lastHealth = maxHealth;
@@ -78,6 +87,8 @@ export class UnitView {
     if (attackFlashSeq !== this.lastAttackFlashSeq) {
       this.lastAttackFlashSeq = attackFlashSeq;
       this.playAttackLunge();
+      const target = this.getAttackTarget?.();
+      if (target) this.fireProjectileEffect(target.x, target.y);
     }
   }
 
@@ -105,5 +116,29 @@ export class UnitView {
   private flashHit(): void {
     this.sprite.setTintFill(0xffffff);
     this.scene.time.delayedCall(HIT_FLASH_MS, () => this.sprite.setTint(this.teamTint));
+  }
+
+  /**
+   * Purely visual, client-inferred shot — `DroneState` doesn't network which
+   * target an attack landed on (only that one landed, via `attackFlashSeq`;
+   * see DroneState's own comment on why it's not a real `ProjectileState`),
+   * so `getAttackTarget` approximates it by finding the same nearest-
+   * opposing-entity the server would have picked. A straight-line (no
+   * gravity), team-tinted streak — distinct from the rifle's arcing
+   * `ProjectileView`.
+   */
+  private fireProjectileEffect(targetX: number, targetY: number): void {
+    const shot = this.scene.add.sprite(this.sprite.x, this.sprite.y, SPRITE_KEYS.projectile);
+    shot.setDisplaySize(SHOT_DISPLAY_WIDTH, SHOT_DISPLAY_HEIGHT);
+    shot.setTint(this.teamTint);
+    shot.setRotation(Phaser.Math.Angle.Between(this.sprite.x, this.sprite.y, targetX, targetY));
+
+    this.scene.tweens.add({
+      targets: shot,
+      x: targetX,
+      y: targetY,
+      duration: SHOT_TRAVEL_MS,
+      onComplete: () => shot.destroy(),
+    });
   }
 }
