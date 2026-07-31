@@ -1,6 +1,7 @@
 import Phaser from "phaser";
 import { BATTLEFIELD_WIDTH, BATTLEFIELD_HEIGHT, MAX_PLAYER_NAME_LENGTH } from "@towerfront/shared";
 import { tryResumeSession } from "../net/connection";
+import { setMenuDebugState } from "../net/testHooks";
 import { PurchaseButton } from "../ui/PurchaseButton";
 import type { StartData as CombatSandboxStartData } from "./CombatSandboxScene";
 import type { StartData as NetworkMatchStartData } from "./NetworkMatchScene";
@@ -72,21 +73,30 @@ export class MainMenuScene extends Phaser.Scene {
     this.buildMenu();
   }
 
+  /**
+   * Stacked top-down with each element positioned from the *measured*
+   * bottom edge of the one above it (title.displayHeight, the DOM input's
+   * own updateSize()-measured height, ...) rather than fixed magic-number
+   * offsets — guessed offsets are exactly what caused the input to overlap
+   * the title before: real font-metric/box-model rendering (title line
+   * height, input padding+border) doesn't match hand-estimated pixel
+   * values closely enough to safely hardcode. Measuring after creation is
+   * correct regardless of font/engine differences.
+   */
   private buildMenu(): void {
     const centerX = BATTLEFIELD_WIDTH / 2;
-    const centerY = BATTLEFIELD_HEIGHT / 2;
+    const GAP = 32;
+    let y = 130;
 
-    this.add
-      .text(centerX, centerY - 220, "TOWERFRONT", { fontFamily: "monospace", fontSize: "56px", color: "#ffffff" })
-      .setOrigin(0.5);
+    const title = this.add
+      .text(centerX, y, "TOWERFRONT", { fontFamily: "monospace", fontSize: "56px", color: "#ffffff" })
+      .setOrigin(0.5, 0);
+    y += title.displayHeight + GAP;
 
-    this.add
-      .text(centerX, centerY - 130, "Display name", {
-        fontFamily: "monospace",
-        fontSize: "16px",
-        color: "#aab0bd",
-      })
-      .setOrigin(0.5);
+    const label = this.add
+      .text(centerX, y, "Display name", { fontFamily: "monospace", fontSize: "16px", color: "#aab0bd" })
+      .setOrigin(0.5, 0);
+    y += label.displayHeight + GAP;
 
     this.nameInputEl = document.createElement("input");
     this.nameInputEl.type = "text";
@@ -109,16 +119,20 @@ export class MainMenuScene extends Phaser.Scene {
       // Enter defaults to the (more common) local vs-AI mode rather than doing nothing.
       if (event.key === "Enter") this.tryStart("computer");
     });
-    const inputDom = this.add.dom(centerX, centerY - 80, this.nameInputEl);
+    const inputDom = this.add.dom(centerX, y, this.nameInputEl).setOrigin(0.5, 0);
     inputDom.setDepth(1);
+    inputDom.updateSize(); // populates .height from the real (post-layout) getBoundingClientRect, not a guess
+    y += inputDom.height + GAP;
 
     this.errorText = this.add
-      .text(centerX, centerY - 40, "", { fontFamily: "monospace", fontSize: "14px", color: "#d6453d" })
-      .setOrigin(0.5);
+      .text(centerX, y, "", { fontFamily: "monospace", fontSize: "14px", color: "#d6453d" })
+      .setOrigin(0.5, 0);
+    y += this.errorText.displayHeight + GAP;
 
+    const buttonY = y;
     const vsComputer = new PurchaseButton(this, {
       x: centerX - BUTTON_GAP / 2 - BUTTON_WIDTH,
-      y: centerY,
+      y: buttonY,
       width: BUTTON_WIDTH,
       height: BUTTON_HEIGHT,
       title: "Play vs Computer",
@@ -128,13 +142,18 @@ export class MainMenuScene extends Phaser.Scene {
 
     const playOnline = new PurchaseButton(this, {
       x: centerX + BUTTON_GAP / 2,
-      y: centerY,
+      y: buttonY,
       width: BUTTON_WIDTH,
       height: BUTTON_HEIGHT,
       title: "Play Online",
       onClick: () => this.tryStart("online"),
     });
     playOnline.setStatus("Multiplayer match", true);
+
+    setMenuDebugState({
+      playVsComputerButtonCenter: { x: centerX - BUTTON_GAP / 2 - BUTTON_WIDTH / 2, y: buttonY + BUTTON_HEIGHT / 2 },
+      playOnlineButtonCenter: { x: centerX + BUTTON_GAP / 2 + BUTTON_WIDTH / 2, y: buttonY + BUTTON_HEIGHT / 2 },
+    });
 
     this.nameInputEl.focus();
   }

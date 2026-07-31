@@ -15,15 +15,31 @@ export interface TowerfrontDebugState {
   readonly towersReady: boolean;
 }
 
+/**
+ * MainMenuScene's clickable button centers, in world coordinates. Exists so
+ * tests never hardcode/guess pixel positions for canvas-rendered buttons —
+ * a menu layout tweak (e.g. the title/input overlap fix) silently breaks
+ * any test using stale coordinates instead of this.
+ */
+export interface TowerfrontMenuDebugState {
+  readonly playVsComputerButtonCenter: { readonly x: number; readonly y: number };
+  readonly playOnlineButtonCenter: { readonly x: number; readonly y: number };
+}
+
 declare global {
   interface Window {
     __towerfrontDebug?: TowerfrontDebugState;
     __towerfrontSimulateDrop?: () => void;
+    __towerfrontMenuDebug?: TowerfrontMenuDebugState;
   }
 }
 
 export function setDebugState(state: TowerfrontDebugState): void {
   window.__towerfrontDebug = state;
+}
+
+export function setMenuDebugState(state: TowerfrontMenuDebugState): void {
+  window.__towerfrontMenuDebug = state;
 }
 
 // Test-only: `BrowserContext.setOffline()` does not sever an already-open

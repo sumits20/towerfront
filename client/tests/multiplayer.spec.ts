@@ -19,16 +19,22 @@ import type { TowerfrontDebugState } from "../src/net/testHooks";
 // canvas at 1:1 with no letterboxing — page-pixel coordinates below equal
 // game-world coordinates.
 const GAME_VIEWPORT = { width: 1600, height: 900 };
-// MainMenuScene's "Play Online" button center — kept in sync by hand with
-// its layout (BUTTON_WIDTH/BUTTON_HEIGHT/BUTTON_GAP, centered at 800,450).
-const PLAY_ONLINE_BUTTON = { x: 945, y: 486 };
 
-/** MainMenuScene is the entry point on every load (including a refresh) — route through it (name entry + "Play Online") before the networked match exists at all. */
+/**
+ * MainMenuScene is the entry point on every load (including a refresh) —
+ * route through it (name entry + "Play Online") before the networked match
+ * exists at all. Reads the button's real position from
+ * `window.__towerfrontMenuDebug` rather than a hardcoded pixel coordinate —
+ * a layout tweak (e.g. spacing fixes) would otherwise silently make a
+ * stale hardcoded click miss the button entirely.
+ */
 async function playOnlineFromMenu(page: Page, playerName: string): Promise<void> {
   const nameInput = page.locator("input[type=text]");
   await nameInput.waitFor({ state: "visible", timeout: 15_000 });
   await nameInput.fill(playerName);
-  await page.mouse.click(PLAY_ONLINE_BUTTON.x, PLAY_ONLINE_BUTTON.y);
+  const center = await page.evaluate(() => window.__towerfrontMenuDebug?.playOnlineButtonCenter);
+  if (!center) throw new Error("MainMenuScene never set __towerfrontMenuDebug.playOnlineButtonCenter");
+  await page.mouse.click(center.x, center.y);
 }
 
 async function gotoMatch(page: Page, playerName: string): Promise<void> {
