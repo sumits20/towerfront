@@ -9,6 +9,14 @@ export type UnitType =
   | "bomber"
   | "siegeUnit";
 
+// MVP-purchasable roster (build plan 4.1: recruit/runner/shieldUnit + the
+// ranged drone). Drives the client's purchase buttons/keybinds, the AI's
+// purchase options, and the room's server-side purchase validation from one
+// place — the rest of UnitType is reserved for the later content-expansion
+// phase (build plan 3.3) and isn't purchasable yet.
+export type PurchasableUnitType = "recruit" | "runner" | "shieldUnit" | "drone";
+export const PURCHASABLE_UNIT_TYPES: readonly PurchasableUnitType[] = ["recruit", "runner", "shieldUnit", "drone"];
+
 export interface UnitDefinition {
   readonly type: UnitType;
   readonly displayName: string;

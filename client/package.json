@@ -6,13 +6,16 @@
   "scripts": {
     "dev": "vite",
     "build": "tsc && vite build",
-    "preview": "vite preview"
+    "preview": "vite preview",
+    "test:multiplayer": "playwright test"
   },
   "dependencies": {
+    "colyseus.js": "^0.16.22",
     "lightningcss-win32-x64-msvc": "^1.33.0",
     "phaser": "^3.90.0"
   },
   "devDependencies": {
+    "@playwright/test": "^1.62.1",
     "typescript": "~6.0.2",
     "vite": "^8.2.0"
   }

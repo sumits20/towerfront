@@ -8,6 +8,11 @@
     "noUncheckedIndexedAccess": true,
     "exactOptionalPropertyTypes": true,
     "noImplicitOverride": true,
+
+    /* @colyseus/schema requires legacy decorators (see src/schema) */
+    "experimentalDecorators": true,
+    "useDefineForClassFields": false,
+
     "declaration": true,
     "outDir": "dist",
     "rootDir": "src",

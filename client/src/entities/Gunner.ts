@@ -1,7 +1,6 @@
 import Phaser from "phaser";
-import type { WeaponDefinition } from "@towerfront/shared";
+import { PROJECTILE_GRAVITY_Y, BATTLEFIELD_WIDTH, BATTLEFIELD_HEIGHT, type WeaponDefinition } from "@towerfront/shared";
 import { SPRITE_KEYS } from "../assetKeys";
-import { PROJECTILE_GRAVITY_Y, BATTLEFIELD_WIDTH, BATTLEFIELD_HEIGHT } from "../config";
 
 const BARREL_LENGTH = 46;
 const GUNNER_DISPLAY_WIDTH = 84;

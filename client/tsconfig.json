@@ -19,10 +19,14 @@
     "noUncheckedIndexedAccess": true,
     "noImplicitOverride": true,
 
+    /* @colyseus/schema requires legacy decorators (see shared/src/schema) —
+       incompatible with erasableSyntaxOnly, which forbids decorators outright. */
+    "experimentalDecorators": true,
+    "useDefineForClassFields": false,
+
     /* Linting */
     "noUnusedLocals": true,
     "noUnusedParameters": true,
-    "erasableSyntaxOnly": true,
     "noFallthroughCasesInSwitch": true,
 
     /* Shared package */

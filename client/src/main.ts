@@ -1,7 +1,7 @@
 import Phaser from "phaser";
 import "./style.css";
-import { BATTLEFIELD_WIDTH, BATTLEFIELD_HEIGHT } from "./config";
-import { CombatSandboxScene } from "./scenes/CombatSandboxScene";
+import { BATTLEFIELD_WIDTH, BATTLEFIELD_HEIGHT } from "@towerfront/shared";
+import { NetworkMatchScene } from "./scenes/NetworkMatchScene";
 
 new Phaser.Game({
   type: Phaser.AUTO,
@@ -19,5 +19,5 @@ new Phaser.Game({
     default: "arcade",
     arcade: { debug: false },
   },
-  scene: [CombatSandboxScene],
+  scene: [NetworkMatchScene],
 });

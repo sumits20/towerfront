@@ -1,13 +1,16 @@
 import Phaser from "phaser";
-import { WEAPON_DEFINITIONS, UNIT_DEFINITIONS, type Side } from "@towerfront/shared";
 import {
+  WEAPON_DEFINITIONS,
+  UNIT_DEFINITIONS,
+  type Side,
   BATTLEFIELD_WIDTH,
   BATTLEFIELD_HEIGHT,
   GROUND_Y,
   TOWER_MARGIN_X,
   STARTING_MONEY,
   PROJECTILE_GRAVITY_Y,
-} from "../config";
+  EasyAiController,
+} from "@towerfront/shared";
 import { Tower } from "../entities/Tower";
 import { Gunner } from "../entities/Gunner";
 import { Unit } from "../entities/Unit";
@@ -17,7 +20,6 @@ import type { ImplementedUnitType } from "../entities/unitVisuals";
 import { SPRITE_KEYS, SPRITE_PATHS } from "../assetKeys";
 import { AUDIO_KEYS, AUDIO_PATHS } from "../audioKeys";
 import { PurchaseButton } from "../ui/PurchaseButton";
-import { EasyAiController } from "../ai/EasyAiController";
 import { AudioManager } from "../audio/AudioManager";
 
 const PROJECTILE_DISPLAY_WIDTH = 26;

@@ -8,12 +8,16 @@
     "noUncheckedIndexedAccess": true,
     "noImplicitOverride": true,
     "noEmit": true,
+
+    /* @colyseus/schema requires legacy decorators (see shared/src/schema) */
+    "experimentalDecorators": true,
+    "useDefineForClassFields": false,
     "skipLibCheck": true,
     "esModuleInterop": true,
     "forceConsistentCasingInFileNames": true,
     "types": ["node"],
     "paths": {
-      "@towerfront/shared": ["../shared/src/index.ts"]
+      "@towerfront/shared": ["../shared/dist/index.d.ts"]
     }
   },
   "include": ["src"]

@@ -9,11 +9,10 @@ export interface AiPurchaseOption<T extends string> {
 
 /**
  * Build plan section 7 "Easy" AI: "Slow reactions, random affordable units,
- * lower shooting accuracy." No shooting yet (phase 3 bounty economy isn't in
- * place), so this only decides what to buy. Purely a decision-maker — the
- * caller applies the resulting purchase through the same path a human
- * player's button click would use, so the AI can't cheat past cost/cooldown
- * rules.
+ * lower shooting accuracy." Runs server-side in MatchRoom for any side
+ * without a connected human. Purely a decision-maker — the caller applies
+ * the resulting purchase through the same path a human player's button
+ * click would use, so the AI can't cheat past cost/cooldown rules.
  */
 export class EasyAiController {
   private readonly initialDelayMs: number;
@@ -23,7 +22,7 @@ export class EasyAiController {
     this.initialDelayMs = initialDelayMs;
   }
 
-  /** Call every frame; returns a unit type to purchase, or null if it's not time yet / nothing affordable. */
+  /** Call every tick; returns a unit type to purchase, or null if it's not time yet / nothing affordable. */
   decide<T extends string>(nowMs: number, gold: number, options: readonly AiPurchaseOption<T>[]): T | null {
     if (this.nextDecisionAtMs === null) {
       this.nextDecisionAtMs = nowMs + this.initialDelayMs;

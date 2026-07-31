@@ -1,40 +1,48 @@
-import type { Side } from "./ids.js";
 import type { UnitType } from "./units.js";
-import type { WeaponType } from "./weapons.js";
+import type { Side } from "./ids.js";
 
-// Placeholder network protocol for the future Colyseus multiplayer phase
-// (build plan 5.2/11.3). Not wired up yet — the local prototype phase runs
-// with no network layer. Kept here so the shape is agreed before it matters.
+// Network protocol for the Colyseus MatchRoom (build plan 5.2/11.3). The
+// client only ever sends intentions; the server validates and decides
+// everything (ammo/cooldown/cost/collision/damage/victory). Which side sent
+// a message is derived server-side from `client.sessionId`, never trusted
+// from the payload.
 
-export interface FireCommand {
-  readonly type: "fire";
-  readonly side: Side;
-  readonly aimAngleRad: number;
+/** Client -> server message type strings (used as the Colyseus `type` argument). */
+export const CLIENT_MESSAGE = {
+  ready: "ready",
+  fire: "fire",
+  reload: "reload",
+  aim: "aim",
+  purchaseUnit: "purchaseUnit",
+  restart: "restart",
+} as const;
+
+export interface FireMessage {
+  readonly angle: number;
 }
 
-export interface ReloadCommand {
-  readonly type: "reload";
-  readonly side: Side;
+export interface AimMessage {
+  readonly angle: number;
 }
 
-export interface PurchaseUnitCommand {
-  readonly type: "purchaseUnit";
-  readonly side: Side;
+export interface PurchaseUnitMessage {
   readonly unitType: UnitType;
 }
 
-export type ClientCommand = FireCommand | ReloadCommand | PurchaseUnitCommand;
+/** Server -> client notifications for events the state diff alone doesn't explain. */
+export const SERVER_MESSAGE = {
+  matchRestarted: "matchRestarted",
+  assignedSide: "assignedSide",
+} as const;
 
-export interface DamageEvent {
-  readonly type: "damage";
-  readonly targetId: string;
-  readonly amount: number;
-  readonly sourceWeapon?: WeaponType;
+export interface MatchRestartedMessage {
+  readonly initiatedBySide: Side;
 }
 
-export interface MatchEndedEvent {
-  readonly type: "matchEnded";
-  readonly winner: Side;
-}
-
-export type ServerEvent = DamageEvent | MatchEndedEvent;
+/**
+ * Sent once per fresh join (and once per successful reconnect, since a page
+ * refresh loses any client-side memory of it) — nothing in `MatchState`
+ * identifies which side a given connection controls, so without this the
+ * client can't tell its own gunner/purchase row from the opponent's.
+ */
+export type AssignedSideMessage = Side;
