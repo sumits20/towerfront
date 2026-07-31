@@ -6,8 +6,9 @@
 
 **Unit lane prototype (phase 2) + a working slice of the bounty economy (phase 3) + a full local
 playable loop** (start screen, win banner, restart, an Easy-difficulty AI opponent that both buys
-units and shoots). Local-only, no network layer. A full match can be played and replayed
-start-to-finish without manual debugging or a page reload.
+units and shoots), now running on a server-authoritative Colyseus `MatchRoom` (`server/src/rooms/`)
+instead of the original local-only client. A full match can be played and replayed start-to-finish
+without manual debugging or a page reload.
 
 Implemented so far:
 - Rifle combat: both towers have a `Gunner` (player-controlled left, AI-controlled right).
