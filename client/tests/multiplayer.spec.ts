@@ -169,13 +169,12 @@ test.describe("MatchRoom multiplayer", () => {
     const { contextA, contextB, pageA, errorsA } = await openTwoTabs(browser);
     try {
       await pageA.reload();
-      // A reload lands back on MainMenuScene (the entry point on every load)
-      // before NetworkMatchScene — and therefore __towerfrontDebug — exist
-      // again. sessionStorage (and so the reconnection token) survives a
-      // same-tab reload, so this still exercises the same resume-session
-      // path as before, just preceded by the menu step a real user would see.
-      await playOnlineFromMenu(pageA, "Alice");
+      // A reload lands back on MainMenuScene (the entry point on every
+      // load), but with a still-valid reconnection token in sessionStorage
+      // (same tab, so it survives the reload) it auto-resumes straight into
+      // NetworkMatchScene — the name-entry UI must never appear here.
       await pageA.waitForFunction(() => window.__towerfrontDebug !== undefined, undefined, { timeout: 15_000 });
+      await expect(pageA.locator("input[type=text]")).toHaveCount(0);
       await waitForDebug(pageA, (s) => s.towersReady);
 
       // The regression this guards: a half-rendered state (only one tower,

@@ -1,5 +1,6 @@
 import Phaser from "phaser";
 import { BATTLEFIELD_WIDTH, BATTLEFIELD_HEIGHT, MAX_PLAYER_NAME_LENGTH } from "@towerfront/shared";
+import { tryResumeSession } from "../net/connection";
 import { PurchaseButton } from "../ui/PurchaseButton";
 import type { StartData as CombatSandboxStartData } from "./CombatSandboxScene";
 import type { StartData as NetworkMatchStartData } from "./NetworkMatchScene";
@@ -9,15 +10,19 @@ const BUTTON_HEIGHT = 72;
 const BUTTON_GAP = 30;
 
 /**
- * First scene shown on page load (see main.ts's scene order). Collects a
- * display name (no auth — just a label shown in-game) and routes to either
- * the local single-player sandbox or the networked match. Neither mode
- * scene ever runs without going through here first in normal play, so this
- * is the only place display-name validation needs to live.
+ * First scene shown on page load (see main.ts's scene order). Before
+ * showing anything else, checks for a resumable networked session (a
+ * refresh within the 20s reconnection grace window) and skips straight
+ * into NetworkMatchScene if one exists — matching the pre-menu refresh
+ * behavior, since re-entering a name for a session the server already has
+ * a name for would be pure friction. Otherwise collects a display name
+ * (no auth — just a label shown in-game) and routes to either the local
+ * single-player sandbox or the networked match.
  */
 export class MainMenuScene extends Phaser.Scene {
   private nameInputEl?: HTMLInputElement;
   private errorText?: Phaser.GameObjects.Text;
+  private statusText?: Phaser.GameObjects.Text;
 
   constructor() {
     super("MainMenuScene");
@@ -26,6 +31,48 @@ export class MainMenuScene extends Phaser.Scene {
   create(): void {
     this.add.rectangle(0, 0, BATTLEFIELD_WIDTH, BATTLEFIELD_HEIGHT, 0x1c2230).setOrigin(0, 0).setDepth(-2);
 
+    const centerX = BATTLEFIELD_WIDTH / 2;
+    const centerY = BATTLEFIELD_HEIGHT / 2;
+
+    this.statusText = this.add
+      .text(centerX, centerY, "Checking for an existing session...", {
+        fontFamily: "monospace",
+        fontSize: "18px",
+        color: "#aab0bd",
+      })
+      .setOrigin(0.5);
+
+    void this.checkForResumableSession();
+  }
+
+  /**
+   * A fresh visit (no stored token at all) resolves this near-instantly —
+   * no network round trip happens unless a token is actually present (see
+   * tryResumeSession) — so the "Checking..." text is only ever visibly
+   * shown for the refresh-within-grace-window case.
+   */
+  private async checkForResumableSession(): Promise<void> {
+    let resumed: Awaited<ReturnType<typeof tryResumeSession>> = null;
+    try {
+      resumed = await tryResumeSession();
+    } catch (err) {
+      // tryResumeSession is designed to never throw (its own reconnect
+      // attempt is caught internally) — this is only a guard against a
+      // menu bug permanently stranding the page behind "Checking...".
+      console.error(err);
+    }
+
+    if (resumed) {
+      this.scene.start("NetworkMatchScene", { connection: resumed } satisfies NetworkMatchStartData);
+      return;
+    }
+
+    this.statusText?.destroy();
+    this.statusText = undefined;
+    this.buildMenu();
+  }
+
+  private buildMenu(): void {
     const centerX = BATTLEFIELD_WIDTH / 2;
     const centerY = BATTLEFIELD_HEIGHT / 2;
 

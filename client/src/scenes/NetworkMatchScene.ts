@@ -49,6 +49,8 @@ const PURCHASE_KEY_CODES: Record<PurchasableUnitType, number> = {
 
 export interface StartData {
   readonly playerName?: string;
+  /** Set by MainMenuScene when it already resumed a session itself (see tryResumeSession) — skips this scene's own connectToMatch() entirely, since a fresh join would need a name we deliberately never asked for on that path. */
+  readonly connection?: MatchConnection;
 }
 
 /**
@@ -76,6 +78,7 @@ export class NetworkMatchScene extends Phaser.Scene {
   private connection?: MatchConnection;
   private mySide?: Side;
   private playerName = "Player";
+  private resumedConnection?: MatchConnection;
   private audio!: AudioManager;
   private deathParticles!: Phaser.GameObjects.Particles.ParticleEmitter;
 
@@ -107,6 +110,7 @@ export class NetworkMatchScene extends Phaser.Scene {
 
   init(data: StartData): void {
     this.playerName = data?.playerName?.trim().slice(0, MAX_PLAYER_NAME_LENGTH) || "Player";
+    this.resumedConnection = data?.connection;
   }
 
   preload(): void {
@@ -231,12 +235,16 @@ export class NetworkMatchScene extends Phaser.Scene {
 
   private async start(): Promise<void> {
     let connection: MatchConnection;
-    try {
-      connection = await connectToMatch(this.playerName);
-    } catch (err) {
-      this.statusText?.setText("Connection failed — is the server running?");
-      console.error(err);
-      return;
+    if (this.resumedConnection) {
+      connection = this.resumedConnection;
+    } else {
+      try {
+        connection = await connectToMatch(this.playerName);
+      } catch (err) {
+        this.statusText?.setText("Connection failed — is the server running?");
+        console.error(err);
+        return;
+      }
     }
     this.connection = connection;
 

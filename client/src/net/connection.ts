@@ -28,6 +28,30 @@ function wrap(client: Client, room: Room<MatchState>): MatchConnection {
   return { client, room, $: getStateCallbacks(room) };
 }
 
+/** Shared by `tryResumeSession` and `connectToMatch` — never throws: a missing/expired/invalid token both look the same to a caller (nothing to resume), so this normalizes them to `null` and clears the stale token either way. */
+async function attemptStoredReconnect(client: Client): Promise<MatchConnection | null> {
+  const storedToken = sessionStorage.getItem(RECONNECTION_TOKEN_KEY);
+  if (!storedToken) return null;
+  try {
+    return wrap(client, await client.reconnect<MatchState>(storedToken));
+  } catch {
+    // Grace window expired, or the room/seat is gone.
+    sessionStorage.removeItem(RECONNECTION_TOKEN_KEY);
+    return null;
+  }
+}
+
+/**
+ * Used by MainMenuScene to decide whether a resumable session exists before
+ * ever showing the name-entry UI — a stored token found valid here skips
+ * straight back into the same match, matching the pre-menu refresh
+ * behavior. Returns `null` (never throws) for "nothing to resume": a fresh
+ * visit with no token, or one whose grace window already expired.
+ */
+export async function tryResumeSession(): Promise<MatchConnection | null> {
+  return attemptStoredReconnect(new Client(SERVER_URL));
+}
+
 // Deliberately NOT passing MatchState as an explicit rootSchema, even though
 // that would give real getters/methods (e.g. PlayerState.laneEdgeX) instead
 // of colyseus.js's reflection-built fallback class: empirically, passing a
@@ -46,16 +70,13 @@ function wrap(client: Client, room: Room<MatchState>): MatchConnection {
  */
 export async function connectToMatch(name: string): Promise<MatchConnection> {
   const client = new Client(SERVER_URL);
-  const storedToken = sessionStorage.getItem(RECONNECTION_TOKEN_KEY);
-
-  if (storedToken) {
-    try {
-      return wrap(client, await client.reconnect<MatchState>(storedToken));
-    } catch {
-      // Grace window expired, or the room/seat is gone — fall through to a fresh join.
-      sessionStorage.removeItem(RECONNECTION_TOKEN_KEY);
-    }
-  }
+  // MainMenuScene already tries this first (see tryResumeSession) and would
+  // have skipped straight to NetworkMatchScene with an established
+  // connection on success, so this only ever finds something to resume here
+  // if this scene was reached some other way (there isn't one today) —
+  // kept as a safety net rather than assuming the caller always checked.
+  const resumed = await attemptStoredReconnect(client);
+  if (resumed) return resumed;
 
   return wrap(client, await client.joinOrCreate<MatchState>("match", { name }));
 }
