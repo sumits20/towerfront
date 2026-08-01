@@ -28,6 +28,7 @@ import { SPRITE_KEYS, SPRITE_PATHS } from "../assetKeys";
 import { AUDIO_KEYS, AUDIO_PATHS } from "../audioKeys";
 import { AudioManager } from "../audio/AudioManager";
 import { PurchaseButton } from "../ui/PurchaseButton";
+import { winnerLabel } from "../ui/winnerLabel";
 
 const SIDES: readonly Side[] = ["left", "right"];
 const TOWER_X: Record<Side, number> = {
@@ -641,7 +642,7 @@ export class NetworkMatchScene extends Phaser.Scene {
 
     const centerX = BATTLEFIELD_WIDTH / 2;
     const centerY = BATTLEFIELD_HEIGHT / 2;
-    const label = winner === "left" ? "BLUE WINS" : "RED WINS";
+    const label = winnerLabel(winner);
 
     const text = this.add
       .text(centerX, centerY - 40, label, {

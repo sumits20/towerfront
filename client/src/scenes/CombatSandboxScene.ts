@@ -9,18 +9,31 @@ import {
   TOWER_MARGIN_X,
   STARTING_MONEY,
   PROJECTILE_GRAVITY_Y,
+  BARREL_LENGTH,
+  GOODIE_MIN_INTERVAL_MS,
+  GOODIE_MAX_INTERVAL_MS,
+  GOODIE_SPAWN_MARGIN,
+  GOODIE_START_Y,
+  GOODIE_GOLD_AMOUNT,
+  GOODIE_REPAIR_AMOUNT,
+  GOODIE_DRIFT_SPEED,
+  AI_AIM_SPREAD_RAD,
+  AI_INITIAL_DELAY_MIN_MS,
+  AI_INITIAL_DELAY_MAX_MS,
   EasyAiController,
   MAX_PLAYER_NAME_LENGTH,
+  type GoodieType,
 } from "@towerfront/shared";
 import { Tower } from "../entities/Tower";
-import { Gunner } from "../entities/Gunner";
+import { GunnerView } from "../entities/GunnerView";
 import { Unit } from "../entities/Unit";
 import { Drone } from "../entities/Drone";
-import { Goodie, type GoodieType } from "../entities/Goodie";
+import { GoodieView } from "../entities/GoodieView";
 import type { ImplementedUnitType } from "../entities/unitVisuals";
 import { SPRITE_KEYS, SPRITE_PATHS } from "../assetKeys";
 import { AUDIO_KEYS, AUDIO_PATHS } from "../audioKeys";
 import { PurchaseButton } from "../ui/PurchaseButton";
+import { winnerLabel } from "../ui/winnerLabel";
 import { AudioManager } from "../audio/AudioManager";
 
 const PROJECTILE_DISPLAY_WIDTH = 26;
@@ -30,20 +43,8 @@ const UNIT_SPAWN_OFFSET = 70;
 const SIDES: readonly Side[] = ["left", "right"];
 const PURCHASABLE_UNIT_TYPES: readonly ImplementedUnitType[] = ["recruit", "runner", "shieldUnit", "drone"];
 const AI_SIDE: Side = "right";
-const AI_INITIAL_DELAY_MIN_MS = 1500;
-const AI_INITIAL_DELAY_MAX_MS = 3000;
-// Build plan section 7 "Easy": "lower shooting accuracy" — the AI gunner
-// tracks its target's true position (so it visually aims correctly) but the
-// shot it actually fires is thrown off by a random angle within this spread.
-const AI_AIM_SPREAD_RAD = 0.14;
 const PASSIVE_INCOME_AMOUNT = 10;
 const PASSIVE_INCOME_INTERVAL_MS = 5000;
-const GOODIE_MIN_INTERVAL_MS = 60_000;
-const GOODIE_MAX_INTERVAL_MS = 300_000;
-const GOODIE_SPAWN_MARGIN = 60;
-const GOODIE_START_Y = -20;
-const GOODIE_GOLD_AMOUNT = 100;
-const GOODIE_REPAIR_AMOUNT = 150;
 
 export interface StartData {
   readonly autoStart?: boolean;
@@ -60,8 +61,12 @@ export interface StartData {
 export class CombatSandboxScene extends Phaser.Scene {
   private leftTower!: Tower;
   private rightTower!: Tower;
-  private gunner!: Gunner;
-  private rightGunner!: Gunner;
+  /** View-only — this scene owns the ammo/fire-cooldown/reload simulation itself below, mirroring MatchRoom's per-side state pattern (build plan 5.2's authoritative-server rule applies just as well locally: one place decides, the view only ever renders). */
+  private gunnerViews!: Record<Side, GunnerView>;
+  private gunnerAmmo!: Record<Side, number>;
+  private gunnerReloading!: Record<Side, boolean>;
+  private nextFireAtMs!: Record<Side, number>;
+  private reloadCompleteAtMs!: Record<Side, number>;
   private projectiles!: Phaser.Physics.Arcade.Group;
   private deathParticles!: Phaser.GameObjects.Particles.ParticleEmitter;
   private reloadKey!: Phaser.Input.Keyboard.Key;
@@ -83,7 +88,11 @@ export class CombatSandboxScene extends Phaser.Scene {
   private audio!: AudioManager;
   private muteButton!: PurchaseButton;
 
-  private activeGoodie: Goodie | null = null;
+  /** View-only, like the gunners — this scene owns the drift/despawn simulation itself below (see updateGoodie), matching how GoodieState.step() owns it server-side for online play. */
+  private goodieView?: GoodieView;
+  private activeGoodieType: GoodieType | null = null;
+  private activeGoodieX = 0;
+  private activeGoodieY = 0;
   private nextGoodieAtMs = 0;
 
   private started = false;
@@ -126,7 +135,9 @@ export class CombatSandboxScene extends Phaser.Scene {
     this.rightUnits = [];
     this.leftDrones = [];
     this.rightDrones = [];
-    this.activeGoodie = null;
+    this.goodieView?.destroy();
+    this.goodieView = undefined;
+    this.activeGoodieType = null;
     this.nextGoodieAtMs = 0;
     this.money = { left: STARTING_MONEY, right: STARTING_MONEY };
     this.cooldownUntilMs = { left: {}, right: {} };
@@ -134,6 +145,11 @@ export class CombatSandboxScene extends Phaser.Scene {
     this.started = false;
     this.matchOver = false;
     this.aimAngle = 0;
+    const magazineSize = WEAPON_DEFINITIONS.rifle.magazineSize;
+    this.gunnerAmmo = { left: magazineSize, right: magazineSize };
+    this.gunnerReloading = { left: false, right: false };
+    this.nextFireAtMs = { left: 0, right: 0 };
+    this.reloadCompleteAtMs = { left: 0, right: 0 };
     this.startOverlayObjects = [];
     this.startButton = undefined;
     this.ai = new EasyAiController(
@@ -148,16 +164,20 @@ export class CombatSandboxScene extends Phaser.Scene {
     this.leftTower = new Tower(this, "left", TOWER_MARGIN_X, GROUND_Y, onTowerHit);
     this.rightTower = new Tower(this, "right", BATTLEFIELD_WIDTH - TOWER_MARGIN_X, GROUND_Y, onTowerHit);
 
-    const onReload = () => this.audio.play(AUDIO_KEYS.rifleReload);
     const leftAnchor = this.leftTower.getGunnerAnchor();
-    this.gunner = new Gunner(this, leftAnchor.x, leftAnchor.y, WEAPON_DEFINITIONS.rifle, onReload, true);
     const rightAnchor = this.rightTower.getGunnerAnchor();
-    this.rightGunner = new Gunner(this, rightAnchor.x, rightAnchor.y, WEAPON_DEFINITIONS.rifle, onReload);
+    this.gunnerViews = {
+      left: new GunnerView(this, leftAnchor.x, leftAnchor.y, WEAPON_DEFINITIONS.rifle, true),
+      right: new GunnerView(this, rightAnchor.x, rightAnchor.y, WEAPON_DEFINITIONS.rifle, false),
+    };
+    for (const side of SIDES) {
+      this.gunnerViews[side].setAmmo(this.gunnerAmmo[side], magazineSize, false);
+    }
 
     this.projectiles = this.physics.add.group();
 
     this.input.on(Phaser.Input.Events.POINTER_MOVE, (pointer: Phaser.Input.Pointer) => {
-      this.aimAngle = this.gunner.aimAt(pointer.worldX, pointer.worldY);
+      this.aimAngle = this.gunnerViews.left.aimAt(pointer.worldX, pointer.worldY);
     });
     this.input.on(
       Phaser.Input.Events.POINTER_DOWN,
@@ -165,7 +185,7 @@ export class CombatSandboxScene extends Phaser.Scene {
         // Don't fire the rifle when the click actually landed on a UI button.
         if (hitObjects.length > 0) return;
         if (!this.started || this.matchOver) return;
-        this.fireWeapon("left", this.gunner, this.aimAngle);
+        this.fireWeapon("left", this.aimAngle);
       },
     );
 
@@ -188,8 +208,9 @@ export class CombatSandboxScene extends Phaser.Scene {
 
   override update(time: number, delta: number): void {
     if (this.started && !this.matchOver) {
+      this.updateReloads(time);
       if (Phaser.Input.Keyboard.JustDown(this.reloadKey)) {
-        this.gunner.startReload(time);
+        this.startReload("left");
       }
       for (const unitType of PURCHASABLE_UNIT_TYPES) {
         if (Phaser.Input.Keyboard.JustDown(this.purchaseKeys[unitType])) {
@@ -208,35 +229,77 @@ export class CombatSandboxScene extends Phaser.Scene {
     this.refreshPurchaseButtons(time);
   }
 
-  /** Fires `gunner`'s weapon (if ready) and spawns a tagged, damage-carrying projectile. */
-  private fireWeapon(side: Side, gunner: Gunner, angle: number): void {
-    const shot = gunner.tryFire(this.time.now, angle);
-    if (!shot) return;
+  /**
+   * Fires `side`'s weapon (if ready) and spawns a tagged, damage-carrying
+   * projectile. Ammo/cooldown/reload state lives on this scene, not on
+   * GunnerView (view-only, like the online mode's own gunner rendering) —
+   * mirrors MatchRoom.fireWeapon's exact rules.
+   */
+  private fireWeapon(side: Side, angle: number): void {
+    if (this.gunnerReloading[side]) return;
+    if (this.gunnerAmmo[side] <= 0) {
+      this.startReload(side);
+      return;
+    }
+    if (this.time.now < this.nextFireAtMs[side]) return;
+
+    const weapon = WEAPON_DEFINITIONS.rifle;
+    this.gunnerAmmo[side] -= 1;
+    this.nextFireAtMs[side] = this.time.now + weapon.fireCooldownMs;
+    this.gunnerViews[side].setAmmo(this.gunnerAmmo[side], weapon.magazineSize, false);
     this.audio.play(AUDIO_KEYS.rifleFire);
 
-    const projectile = this.add.sprite(shot.x, shot.y, SPRITE_KEYS.projectile);
+    const anchor = this.gunnerViews[side];
+    const muzzleX = anchor.x + Math.cos(angle) * BARREL_LENGTH;
+    const muzzleY = anchor.y + Math.sin(angle) * BARREL_LENGTH;
+
+    const projectile = this.add.sprite(muzzleX, muzzleY, SPRITE_KEYS.projectile);
     projectile.setDisplaySize(PROJECTILE_DISPLAY_WIDTH, PROJECTILE_DISPLAY_HEIGHT);
-    projectile.setRotation(shot.angle);
+    projectile.setRotation(angle);
     this.physics.add.existing(projectile);
     this.projectiles.add(projectile);
-    projectile.setData("damage", shot.damage);
+    projectile.setData("damage", weapon.damage);
     projectile.setData("side", side);
 
     const body = projectile.body as Phaser.Physics.Arcade.Body;
     body.setGravityY(PROJECTILE_GRAVITY_Y);
-    body.setVelocity(Math.cos(shot.angle) * gunner.projectileSpeed, Math.sin(shot.angle) * gunner.projectileSpeed);
+    body.setVelocity(Math.cos(angle) * weapon.projectileSpeed, Math.sin(angle) * weapon.projectileSpeed);
+
+    if (this.gunnerAmmo[side] <= 0) {
+      this.startReload(side);
+    }
+  }
+
+  private startReload(side: Side): void {
+    const magazineSize = WEAPON_DEFINITIONS.rifle.magazineSize;
+    if (this.gunnerReloading[side] || this.gunnerAmmo[side] === magazineSize) return;
+    this.gunnerReloading[side] = true;
+    this.reloadCompleteAtMs[side] = this.time.now + WEAPON_DEFINITIONS.rifle.reloadTimeMs;
+    this.gunnerViews[side].setAmmo(this.gunnerAmmo[side], magazineSize, true);
+    this.audio.play(AUDIO_KEYS.rifleReload);
+  }
+
+  private updateReloads(time: number): void {
+    const magazineSize = WEAPON_DEFINITIONS.rifle.magazineSize;
+    for (const side of SIDES) {
+      if (this.gunnerReloading[side] && time >= this.reloadCompleteAtMs[side]) {
+        this.gunnerAmmo[side] = magazineSize;
+        this.gunnerReloading[side] = false;
+        this.gunnerViews[side].setAmmo(magazineSize, magazineSize, false);
+      }
+    }
   }
 
   /** AI gunner: tracks the nearest left-side unit or drone accurately, but fires with random spread. */
   private updateAiShooting(): void {
     const target =
-      this.findNearestTarget(this.leftDrones, this.rightGunner.x) ??
-      this.findNearestTarget(this.leftUnits, this.rightGunner.x);
+      this.findNearestTarget(this.leftDrones, this.gunnerViews.right.x) ??
+      this.findNearestTarget(this.leftUnits, this.gunnerViews.right.x);
     if (!target) return;
 
-    const trackAngle = this.rightGunner.aimAt(target.sprite.x, target.sprite.y);
+    const trackAngle = this.gunnerViews.right.aimAt(target.sprite.x, target.sprite.y);
     const shotAngle = trackAngle + (Math.random() - 0.5) * AI_AIM_SPREAD_RAD;
-    this.fireWeapon("right", this.rightGunner, shotAngle);
+    this.fireWeapon("right", shotAngle);
   }
 
   private findNearestTarget<T extends { alive: boolean; sprite: Phaser.GameObjects.Sprite }>(
@@ -282,17 +345,18 @@ export class CombatSandboxScene extends Phaser.Scene {
 
   /** Sky goodie: shoot it to trigger its effect for whichever side's projectile hit it. */
   private handleProjectileVsGoodie(): void {
-    if (!this.activeGoodie) return;
+    if (!this.goodieView || !this.activeGoodieType) return;
 
-    const goodieBounds = this.activeGoodie.getBounds();
+    const goodieBounds = this.goodieView.getBounds();
     const projectiles = [...this.projectiles.getChildren()] as Phaser.GameObjects.Sprite[];
     for (const projectile of projectiles) {
       if (!Phaser.Geom.Intersects.RectangleToRectangle(projectile.getBounds(), goodieBounds)) continue;
 
       const side = projectile.getData("side") as Side;
-      this.applyGoodieEffect(side, this.activeGoodie.type);
-      this.activeGoodie.destroy();
-      this.activeGoodie = null;
+      this.applyGoodieEffect(side, this.activeGoodieType);
+      this.goodieView.destroy();
+      this.goodieView = undefined;
+      this.activeGoodieType = null;
       this.scheduleNextGoodie(this.time.now);
       projectile.destroy();
       break;
@@ -308,13 +372,21 @@ export class CombatSandboxScene extends Phaser.Scene {
     }
   }
 
-  /** Drifts the active goodie down and despawns it (no effect) once it reaches the lane, or spawns a new one when due. */
+  /**
+   * Drifts the active goodie down and despawns it (no effect) once it
+   * reaches the lane, or spawns a new one when due. This scene owns the
+   * simulation (position, drift speed, despawn) exactly like MatchRoom's
+   * updateGoodie() does server-side for online play — GoodieView (shared
+   * by both modes) only ever renders wherever it's told via sync().
+   */
   private updateGoodie(time: number, deltaMs: number): void {
-    if (this.activeGoodie) {
-      this.activeGoodie.update(deltaMs);
-      if (this.activeGoodie.y >= GROUND_Y) {
-        this.activeGoodie.destroy();
-        this.activeGoodie = null;
+    if (this.goodieView && this.activeGoodieType) {
+      this.activeGoodieY += GOODIE_DRIFT_SPEED * (deltaMs / 1000);
+      this.goodieView.sync(this.activeGoodieX, this.activeGoodieY);
+      if (this.activeGoodieY >= GROUND_Y) {
+        this.goodieView.destroy();
+        this.goodieView = undefined;
+        this.activeGoodieType = null;
         this.scheduleNextGoodie(time);
       }
     } else if (time >= this.nextGoodieAtMs) {
@@ -325,7 +397,10 @@ export class CombatSandboxScene extends Phaser.Scene {
   private spawnGoodie(): void {
     const type: GoodieType = Math.random() < 0.5 ? "gold" : "repair";
     const x = Phaser.Math.Between(GOODIE_SPAWN_MARGIN, BATTLEFIELD_WIDTH - GOODIE_SPAWN_MARGIN);
-    this.activeGoodie = new Goodie(this, type, x, GOODIE_START_Y);
+    this.activeGoodieType = type;
+    this.activeGoodieX = x;
+    this.activeGoodieY = GOODIE_START_Y;
+    this.goodieView = new GoodieView(this, type, x, GOODIE_START_Y);
   }
 
   private scheduleNextGoodie(time: number): void {
@@ -588,7 +663,7 @@ export class CombatSandboxScene extends Phaser.Scene {
 
     const centerX = BATTLEFIELD_WIDTH / 2;
     const centerY = BATTLEFIELD_HEIGHT / 2;
-    const label = winningSide === "left" ? "LEFT TOWER WINS" : "RIGHT TOWER WINS";
+    const label = winnerLabel(winningSide);
 
     this.add
       .text(centerX, centerY - 40, label, {

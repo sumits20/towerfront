@@ -45,6 +45,11 @@ export const GOODIE_SPAWN_MARGIN = 60;
 export const GOODIE_START_Y = -20;
 export const GOODIE_GOLD_AMOUNT = 100;
 export const GOODIE_REPAIR_AMOUNT = 150;
+// Slow constant downward drift, not gravity-accelerated — "falling slowly
+// like a balloon" (build plan section 6 sky goodies). Shared by GoodieState
+// (online) and CombatSandboxScene's own local simulation (vs-AI) so both
+// modes fall at the same visual speed.
+export const GOODIE_DRIFT_SPEED = 40;
 
 // Build plan section 7 "Easy": "lower shooting accuracy" — the AI gunner
 // tracks its target's true position (so it visually aims correctly) but the
